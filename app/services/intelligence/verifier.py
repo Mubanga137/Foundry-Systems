@@ -30,7 +30,7 @@ def ping_gemini_key(key: str, model_name: str = "gemini-1.5-flash") -> Dict[str,
     genai.configure(api_key=key)
 
     candidate_models = [model_name]
-    for fallback in ("gemini-3.8-flash", "gemini-flash-latest"):
+    for fallback in ("gemini-1.5-flash-latest", "gemini-flash-latest"):
         if fallback not in candidate_models:
             candidate_models.append(fallback)
 

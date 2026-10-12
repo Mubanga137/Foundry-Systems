@@ -553,12 +553,12 @@
       processingStatus.classList.add('hidden');
       uploadSpinner.classList.add('hidden');
 
-      if (data.status === 'SUCCESS' || data.success === true) {
+      if (data.status === 'SUCCESS' || data.success === true || data.status === 'STARTED') {
         var processed = data.files_processed || data.files_count || 1;
         var ingested = data.records_ingested || data.new_businesses || 0;
-        var msg = '⚡ Ingestion Complete: ' +
-          processed + ' file' + (processed > 1 ? 's' : '') + ' | ' +
-          ingested + ' new contractors added. Pipeline running!';
+        var msg = data.status === 'STARTED'
+          ? '⚡ Files saved! Background pipeline initiated for ' + processed + ' file' + (processed > 1 ? 's' : '') + '. Watch telemetry console →'
+          : '⚡ Ingestion Complete: ' + processed + ' file' + (processed > 1 ? 's' : '') + ' | ' + ingested + ' new contractors added. Pipeline running!';
         showToast(msg, 'success');
 
         // Reset file queue

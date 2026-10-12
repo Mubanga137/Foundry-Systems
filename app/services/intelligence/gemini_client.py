@@ -141,7 +141,7 @@ class GeminiAnalysisClient:
                 genai.configure(api_key=key)
 
                 candidate_models = [self._model_name]
-                for fallback in ("gemini-3.8-flash", "gemini-flash-latest"):
+                for fallback in ("gemini-1.5-flash-latest", "gemini-flash-latest"):
                     if fallback not in candidate_models:
                         candidate_models.append(fallback)
 

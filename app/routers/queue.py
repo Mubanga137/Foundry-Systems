@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -166,7 +166,8 @@ async def approve_queue_batch(
 ):
     """
     Approve selected drafted jobs and move them to QUEUED.
-    Supports form submission as well as JSON payload for API / HTMX.
+    Only approves explicitly selected job IDs. If no IDs are provided,
+    returns a 400 warning instead of approving all.
     """
     selected_ids = job_ids
 
@@ -184,25 +185,41 @@ async def approve_queue_batch(
     except Exception:
         pass
 
-    # Filter out empty or None values
-    valid_job_ids = [j for j in (selected_ids or []) if j and j.startswith("job-")]
-    business_ids = [j for j in (selected_ids or []) if j and j.startswith("biz-")]
+    # FIX 3: Accept raw UUID strings without prefix filtering.
+    # Filter out empty or None values only.
+    valid_job_ids = [j.strip() for j in (selected_ids or []) if j and j.strip()]
 
-    # If business_ids were passed, lookup corresponding drafted job ids
-    if business_ids:
-        b_jobs = (
-            db.query(DispatchJob.id)
-            .filter(
-                DispatchJob.business_id.in_(business_ids),
-                DispatchJob.status == DispatchStatus.DRAFTED.value,
+    # FIX 3: If no checkboxes were selected, do NOT approve all — return warning
+    if not valid_job_ids:
+        warn_msg = "No jobs selected for approval. Please select at least one job."
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse(
+                {"status": "WARNING", "approved_count": 0, "message": warn_msg},
+                status_code=400,
             )
-            .all()
-        )
-        valid_job_ids.extend([bj[0] for bj in b_jobs])
+        return RedirectResponse(url=f"/queue?error={warn_msg}", status_code=303)
 
-    # If no specific IDs were submitted, approve all currently drafted jobs up to 20
-    approve_target = valid_job_ids if valid_job_ids else None
-    approved = approve_batch(db, job_ids=approve_target)
+    # Validate submitted IDs against actual DRAFTED jobs in DB
+    valid_drafted = (
+        db.query(DispatchJob.id)
+        .filter(
+            DispatchJob.id.in_(valid_job_ids),
+            DispatchJob.status == DispatchStatus.DRAFTED.value,
+        )
+        .all()
+    )
+    validated_ids = [row[0] for row in valid_drafted]
+
+    if not validated_ids:
+        warn_msg = "None of the selected jobs are in DRAFTED status."
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse(
+                {"status": "WARNING", "approved_count": 0, "message": warn_msg},
+                status_code=400,
+            )
+        return RedirectResponse(url=f"/queue?error={warn_msg}", status_code=303)
+
+    approved = approve_batch(db, job_ids=validated_ids)
 
     msg = f"Successfully approved {len(approved)} outreach jobs. Staged into QUEUED status."
 
@@ -215,10 +232,18 @@ async def approve_queue_batch(
 @router.post("/dispatch")
 def run_dispatcher(
     request: Request,
+    force: bool = Query(False, description="Bypass pacing delay for immediate dispatch"),
     db: Session = Depends(get_db),
 ):
-    """Trigger dispatch worker with operating hours gate and channel adaptation."""
-    worker = DispatchWorker(min_delay=0.0, max_delay=0.0)
+    """Trigger dispatch worker with operating hours gate and channel adaptation.
+
+    Uses configured DISPATCH_MIN/MAX_DELAY_SECONDS for safe pacing.
+    Pass ?force=true to bypass pacing (operator override for testing).
+    """
+    if force:
+        worker = DispatchWorker(min_delay=0.0, max_delay=0.0)
+    else:
+        worker = DispatchWorker()  # Uses settings defaults (60-120s jitter)
     summary = worker.dispatch_queue(db, limit=20)
 
     if summary.held_by_operating_hours:

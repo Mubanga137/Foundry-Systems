@@ -643,3 +643,149 @@ class TestHealthEndpoint:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "HEALTHY"
+
+
+# =========================================================================== #
+#  7. P0 REMEDIATION ACCEPTANCE TESTS
+# =========================================================================== #
+
+class TestP0QueueSelectionFix:
+    """Verify FIX 3: Queue checkbox approval respects selected rows only."""
+
+    def test_approve_only_selected_jobs(self, client: TestClient, web_session: Session):
+        """Stage 3 draft jobs, select only 1, assert only 1 moves to QUEUED."""
+        # Create 3 businesses with qualifications and draft jobs
+        jobs = []
+        for i in range(3):
+            biz = _create_test_business(
+                web_session, name=f"Queue Test Contractor {i}"
+            )
+            _create_test_qualification(web_session, biz)
+            job = DispatchJob(
+                business_id=biz.id,
+                channel=DispatchChannel.FB_MESSENGER.value,
+                recipient_target="+260977112233",
+                rendered_content=f"Test outreach message {i}",
+                status=DispatchStatus.DRAFTED.value,
+                idempotency_key=f"queue_test_idemp_{i}",
+                scheduled_for=datetime.now(timezone.utc),
+            )
+            web_session.add(job)
+            web_session.commit()
+            web_session.refresh(job)
+            jobs.append(job)
+
+        # Approve only the first job
+        response = client.post(
+            "/queue/approve",
+            data={"job_ids": [jobs[0].id]},
+            headers={"Accept": "application/json"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["approved_count"] == 1
+
+        # Verify states in DB
+        web_session.expire_all()
+        job0 = web_session.query(DispatchJob).filter(DispatchJob.id == jobs[0].id).one()
+        job1 = web_session.query(DispatchJob).filter(DispatchJob.id == jobs[1].id).one()
+        job2 = web_session.query(DispatchJob).filter(DispatchJob.id == jobs[2].id).one()
+
+        assert job0.status == DispatchStatus.QUEUED.value
+        assert job1.status == DispatchStatus.DRAFTED.value
+        assert job2.status == DispatchStatus.DRAFTED.value
+
+    def test_empty_selection_returns_400(self, client: TestClient, web_session: Session):
+        """If no checkboxes selected, return 400 warning, not approve-all."""
+        biz = _create_test_business(web_session, name="No Select Test")
+        _create_test_qualification(web_session, biz)
+        job = DispatchJob(
+            business_id=biz.id,
+            channel=DispatchChannel.FB_MESSENGER.value,
+            recipient_target="+260977112233",
+            rendered_content="Test message",
+            status=DispatchStatus.DRAFTED.value,
+            idempotency_key="queue_empty_select_idemp",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        web_session.add(job)
+        web_session.commit()
+        web_session.refresh(job)
+
+        # Submit with empty job_ids
+        response = client.post(
+            "/queue/approve",
+            data={"job_ids": []},
+            headers={"Accept": "application/json"},
+        )
+        assert response.status_code == 400
+
+        # Job should remain DRAFTED
+        web_session.expire_all()
+        job = web_session.query(DispatchJob).filter(DispatchJob.id == job.id).one()
+        assert job.status == DispatchStatus.DRAFTED.value
+
+
+class TestP0WebInvoiceGeneration:
+    """Verify FIX 6: Proposal acceptance + K5,500 invoice generation via web route."""
+
+    def test_accept_proposal_generates_mobilization_invoice(
+        self, client: TestClient, web_session: Session
+    ):
+        """Issue a proposal, accept it via web route, confirm K5,500 invoice in /invoices."""
+        biz = _create_test_business(web_session, name="Invoice Test Contractor")
+        _create_test_qualification(web_session, biz)
+        conv = _create_test_conversation(
+            web_session, biz, state=ConversationState.PROPOSAL_REQUESTED.value
+        )
+
+        # Issue proposal
+        prop = create_grand_slam_proposal(web_session, biz.id)
+        prop = issue_proposal(web_session, prop.id)
+
+        # Accept and invoice via the new web route
+        response = client.post(
+            f"/inbox/{conv.id}/proposal/accept-and-invoice",
+            headers={"Accept": "application/json"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "SUCCESS"
+        assert data["amount"] == 5500.0
+        assert "invoice_number" in data
+
+        # Verify invoice appears in DB
+        invoice = (
+            web_session.query(Invoice)
+            .filter(Invoice.proposal_id == prop.id)
+            .first()
+        )
+        assert invoice is not None
+        assert float(invoice.amount) == 5500.0
+        assert invoice.milestone_tier == MilestoneTier.MOBILIZATION.value
+        assert invoice.status == InvoiceStatus.ISSUED.value
+
+        # Verify invoice renders on /invoices page
+        invoices_response = client.get("/invoices")
+        assert invoices_response.status_code == 200
+        assert data["invoice_number"] in invoices_response.text
+
+
+class TestP0InboundReplySimulation:
+    """Verify FIX 6: Inbound reply simulation route."""
+
+    def test_simulate_inbound_reply(self, client: TestClient, web_session: Session):
+        """Simulate an inbound reply and verify intent classification runs."""
+        biz = _create_test_business(web_session, name="Inbound Test Contractor")
+        _create_test_qualification(web_session, biz)
+        conv = _create_test_conversation(web_session, biz)
+
+        response = client.post(
+            f"/inbox/{conv.id}/reply-inbound",
+            data={"content": "Yes I am very interested in your services!", "channel": "FB_MESSENGER"},
+            headers={"Accept": "application/json"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "SUCCESS"
+        assert "intent" in data["data"]

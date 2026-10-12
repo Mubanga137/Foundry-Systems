@@ -50,12 +50,43 @@ def build_session_factory(engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
+# --------------------------------------------------------------------------- #
+#  Singleton Engine & Session Factory (initialized once at module level)
+# --------------------------------------------------------------------------- #
+
+_engine = None
+_SessionFactory = None
+
+
+def _get_engine():
+    """Return the module-level singleton engine, creating it on first call."""
+    global _engine
+    if _engine is None:
+        _engine = build_engine()
+    return _engine
+
+
+def _get_session_factory():
+    """Return the module-level singleton session factory."""
+    global _SessionFactory
+    if _SessionFactory is None:
+        _SessionFactory = build_session_factory(_get_engine())
+    return _SessionFactory
+
+
 def get_db():
-    """FastAPI database session dependency."""
-    engine = build_engine()
-    SessionFactory = build_session_factory(engine)
-    db = SessionFactory()
+    """FastAPI database session dependency. Uses the singleton engine."""
+    db = _get_session_factory()()
     try:
         yield db
     finally:
         db.close()
+
+
+def reset_engine():
+    """Reset the singleton engine (useful for testing)."""
+    global _engine, _SessionFactory
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _SessionFactory = None

@@ -380,6 +380,10 @@ class PipelineOrchestrator:
                         except Exception as qe:
                             self.summary["errors"] += 1
                             self.add_log(f"[GEMINI QUALIFY] Key #{key_idx} error evaluating '{business.company_name}': {qe}")
+                            try:
+                                session.rollback()
+                            except Exception:
+                                pass
 
                         with self._lock:
                             self.processed_count = idx

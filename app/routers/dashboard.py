@@ -176,14 +176,9 @@ async def upload_files(
 ):
     """Handle drag-and-drop multi-file upload for CSV or XLSX lead lists.
 
-    Accepts one or more files simultaneously. Accepts either `files` (multi-file)
-    or `file` (single-file legacy) form field name. Each file is:
-      1. Validated for .csv/.xlsx extension
-      2. Saved to data/input/ for provenance
-      3. Parsed by ImporterService with deduplication
-      4. Optionally auto-qualified via the intelligence pipeline
-
-    Returns JSON for AJAX/fetch calls, or redirects for standard form posts.
+    Saves uploaded files to data/input/, returns an immediate HTTP 202 response,
+    then offloads parsing, import, and pipeline execution to a background worker
+    so the event loop is never blocked and telemetry polling continues uninterrupted.
     """
     is_json = (
         "application/json" in request.headers.get("accept", "")
@@ -237,141 +232,167 @@ async def upload_files(
     # Ensure data/input directory exists
     DATA_INPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Process each accepted file
-    total_rows = 0
-    total_new = 0
-    total_dupes = 0
-    files_processed = 0
-    file_summaries = []
-    temp_paths = []
+    # ---- Save files to disk synchronously (fast I/O, non-blocking safe) ----
+    saved_paths = []
+    for upload_file, filename, ext in accepted:
+        try:
+            content = await upload_file.read()
+            dest = DATA_INPUT_DIR / filename
+            counter = 1
+            while dest.exists():
+                stem = Path(filename).stem
+                dest = DATA_INPUT_DIR / f"{stem}_{counter}{ext}"
+                counter += 1
+            dest.write_bytes(content)
+            saved_paths.append(str(dest))
+        except Exception as e:
+            logger.error("Error saving file %s: %s", filename, e)
 
-    try:
-        for upload_file, filename, ext in accepted:
-            temp_path = None
-            try:
-                # Write to temp file for processing
-                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                    content = await upload_file.read()
-                    tmp.write(content)
-                    temp_path = tmp.name
-                temp_paths.append(temp_path)
-
-                # Also save a copy to data/input/ for provenance
-                try:
-                    dest = DATA_INPUT_DIR / filename
-                    # Avoid overwriting existing files
-                    counter = 1
-                    while dest.exists():
-                        stem = Path(filename).stem
-                        dest = DATA_INPUT_DIR / f"{stem}_{counter}{ext}"
-                        counter += 1
-                    shutil.copy2(temp_path, str(dest))
-                except Exception:
-                    pass  # Non-critical; temp file is the processing source
-
-                # Run importer
-                import_stats = import_file(db, temp_path)
-                rows = getattr(import_stats, "rows_read", 0)
-                new_biz = getattr(import_stats, "new_businesses", 0)
-                dupes = getattr(import_stats, "duplicates_skipped", 0) + getattr(
-                    import_stats, "duplicates_merged", 0
-                )
-
-                total_rows += rows
-                total_new += new_biz
-                total_dupes += dupes
-                files_processed += 1
-
-                file_summaries.append(
-                    {
-                        "filename": filename,
-                        "rows_read": rows,
-                        "new_businesses": new_biz,
-                        "duplicates": dupes,
-                    }
-                )
-
-            except Exception as e:
-                logger.error("Error processing file %s: %s", filename, e)
-                file_summaries.append(
-                    {
-                        "filename": filename,
-                        "rows_read": 0,
-                        "new_businesses": 0,
-                        "duplicates": 0,
-                        "error": str(e),
-                    }
-                )
-
-        # Auto-qualification and outreach compilation via autonomous orchestrator
-        should_run = True if (auto_pipeline is None and auto_qualify is None) else bool(auto_pipeline if auto_pipeline is not None else auto_qualify)
-        qualified_count = 0
-        if should_run and total_new > 0:
-            try:
-                pipeline_res = orchestrator.run_pipeline(
-                    files=None,
-                    auto_qualify=True,
-                    auto_draft=True,
-                    db=db,
-                )
-                qualified_count = pipeline_res.get("summary", {}).get("qualified", 0)
-            except Exception as e:
-                logger.warning("Autonomous pipeline error during upload: %s", e)
-        else:
-            orchestrator.add_log(
-                f"[INGEST] Processed {files_processed} files. Added {total_new} new contractors, "
-                f"skipped {total_dupes} duplicates."
-            )
-
-        # Build response
-        result = {
-            "success": True,
-            "status": "SUCCESS",
-            "message": "Files ingested. Autonomous pipeline running in background.",
-            "files_processed": files_processed,
-            "records_ingested": total_new,
-            "duplicates_skipped": total_dupes,
-            "files_count": files_processed,
-            "total_rows": total_rows,
-            "new_businesses": total_new,
-            "qualified_count": qualified_count,
-            "file_details": file_summaries,
-        }
-
-        if rejected:
-            result["rejected_files"] = rejected
-
-        if is_json:
-            return JSONResponse(result)
-
-        # Build flash message for redirect
-        msg = (
-            f"Successfully processed {files_processed} file(s): "
-            f"{total_rows} rows read, {total_new} new contractors added, "
-            f"{total_dupes} duplicates merged"
-        )
-        if qualified_count > 0:
-            msg += f", {qualified_count} prospects qualified"
-        msg += "."
-        if rejected:
-            msg += f" Rejected: {', '.join(rejected)}"
-
-        return RedirectResponse(url=f"/queue?message={msg}", status_code=303)
-
-    except Exception as e:
-        logger.error("Upload processing failed: %s", e)
-        error_msg = f"Import failed: {str(e)}"
+    if not saved_paths:
+        error_msg = "Failed to save uploaded files to disk."
         if is_json:
             return JSONResponse({"status": "ERROR", "error": error_msg}, status_code=500)
         return RedirectResponse(url=f"/?error={error_msg}", status_code=303)
 
-    finally:
-        for tp in temp_paths:
-            if tp and os.path.exists(tp):
-                try:
-                    os.remove(tp)
-                except OSError:
-                    pass
+    # ---- Determine pipeline behavior ----
+    should_run = True if (auto_pipeline is None and auto_qualify is None) else bool(
+        auto_pipeline if auto_pipeline is not None else auto_qualify
+    )
+
+    # ---- Ingest files into DB and collect statistics ----
+    total_new = 0
+    total_dupes = 0
+    total_rows = 0
+    files_processed = 0
+    all_errors = []
+    file_summaries = []
+
+    for path_str in saved_paths:
+        try:
+            import_stats = import_file(db, path_str)
+            rows = getattr(import_stats, "rows_read", 0)
+            new_biz = getattr(import_stats, "new_businesses", 0)
+            dupes = getattr(import_stats, "duplicates_skipped", 0) + getattr(
+                import_stats, "duplicates_merged", 0
+            )
+            errors = getattr(import_stats, "errors", [])
+
+            total_rows += rows
+            total_new += new_biz
+            total_dupes += dupes
+            files_processed += 1
+
+            if errors:
+                all_errors.extend(errors)
+
+            file_summaries.append(
+                {
+                    "filename": Path(path_str).name,
+                    "rows_read": rows,
+                    "new_businesses": new_biz,
+                    "duplicates": dupes,
+                }
+            )
+
+            # Surface ingestion warnings in telemetry
+            if new_biz == 0 and errors:
+                error_detail = "; ".join(errors[:3])
+                orchestrator.add_log(
+                    f"[INGEST] ⚠ WARNING: {Path(path_str).name} — 0 new records. "
+                    f"Errors: {error_detail}"
+                )
+            else:
+                orchestrator.add_log(
+                    f"[INGEST] Parsed {Path(path_str).name}: {rows} rows, "
+                    f"{new_biz} new, {dupes} duplicates"
+                )
+        except Exception as ie:
+            logger.error("Error importing %s: %s", path_str, ie)
+            orchestrator.add_log(f"[INGEST] ✕ Error importing {Path(path_str).name}: {ie}")
+            all_errors.append(str(ie))
+
+    # FIX 2: Surface ingestion errors if no businesses created and errors occurred
+    if total_new == 0 and all_errors:
+        err_msg = f"Ingestion Failed: {'; '.join(all_errors[:3])}"
+        orchestrator.add_log(f"[INGEST] ❌ {err_msg}")
+        if is_json:
+            return JSONResponse(
+                {
+                    "status": "ERROR",
+                    "error": err_msg,
+                    "errors": all_errors,
+                    "files_count": len(saved_paths),
+                    "new_businesses": 0,
+                },
+                status_code=400,
+            )
+        return RedirectResponse(
+            url=f"/?error={err_msg.replace(' ', '+')}",
+            status_code=303,
+        )
+
+    # Telemetry log for successful ingress
+    orchestrator.add_log(
+        f"[INGEST] ✓ Ingestion complete: {files_processed} file(s), "
+        f"{total_new} new contractors, {total_dupes} duplicates skipped."
+    )
+
+    # FIX 1: Offload AI pipeline to background worker thread so event loop is never blocked
+    if should_run and total_new > 0:
+        def _background_pipeline():
+            from app.database import build_engine, build_session_factory
+            bg_engine = build_engine()
+            bg_session = build_session_factory(bg_engine)()
+            try:
+                orchestrator.run_pipeline(
+                    files=None,
+                    auto_qualify=True,
+                    auto_draft=True,
+                    db=bg_session,
+                )
+            except Exception as pe:
+                logger.warning("Background pipeline execution error: %s", pe)
+                orchestrator.add_log(f"[ERROR] Pipeline error: {pe}")
+            finally:
+                bg_session.close()
+
+        import threading
+        worker = threading.Thread(target=_background_pipeline, daemon=True)
+        worker.start()
+        orchestrator.add_log(
+            f"[PIPELINE] Autonomous pipeline initiated in background for {total_new} new leads..."
+        )
+
+    # Build response payload
+    result = {
+        "success": True,
+        "status": "SUCCESS",
+        "message": "Files ingested. Autonomous pipeline running in background.",
+        "files_processed": files_processed,
+        "records_ingested": total_new,
+        "duplicates_skipped": total_dupes,
+        "files_count": files_processed,
+        "total_rows": total_rows,
+        "new_businesses": total_new,
+        "qualified_count": 0,
+        "file_details": file_summaries,
+    }
+    if rejected:
+        result["rejected_files"] = rejected
+
+    if is_json:
+        return JSONResponse(result, status_code=200)
+
+    # Redirect for HTML form POST
+    msg = (
+        f"Successfully processed {files_processed} file(s): "
+        f"{total_rows} rows read, {total_new} new contractors added, "
+        f"{total_dupes} duplicates merged."
+    )
+    if rejected:
+        msg += f" Rejected: {', '.join(rejected)}"
+
+    return RedirectResponse(url=f"/queue?message={msg.replace(' ', '+')}", status_code=303)
 
 
 @router.post("/api/pipeline/run-all")

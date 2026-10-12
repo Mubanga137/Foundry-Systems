@@ -277,3 +277,117 @@ def reply_to_conversation(
         url=f"/inbox?conversation_id={conversation_id}&message=Reply+sent+successfully",
         status_code=303,
     )
+
+
+@router.post("/{conversation_id}/reply-inbound")
+def simulate_inbound_reply(
+    conversation_id: str,
+    request: Request,
+    content: str = Form(...),
+    channel: str = Form("FB_MESSENGER"),
+    db: Session = Depends(get_db),
+):
+    """Simulate or paste a real inbound reply from the prospect.
+
+    Calls ConversationService.handle_inbound_message to run full intent
+    classification and state machine transitions.
+    """
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    service = ConversationService()
+    try:
+        result = service.handle_inbound_message(
+            db, conv.business_id, content.strip(), channel
+        )
+        intent = result.get("intent", "UNKNOWN")
+        new_state = result.get("new_state", conv.state)
+        msg = f"Inbound reply simulated. Intent: {intent}, New state: {new_state}"
+
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"status": "SUCCESS", "message": msg, "data": result})
+        return RedirectResponse(
+            url=f"/inbox?conversation_id={conversation_id}&message={msg}",
+            status_code=303,
+        )
+    except Exception as e:
+        logger.error("Inbound simulation failed: %s", e)
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"status": "ERROR", "error": str(e)}, status_code=400)
+        return RedirectResponse(
+            url=f"/inbox?conversation_id={conversation_id}&error={str(e)}",
+            status_code=303,
+        )
+
+
+@router.post("/{conversation_id}/proposal/accept-and-invoice")
+def accept_proposal_and_invoice(
+    conversation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Accept a proposal and generate K5,500 Mobilization Invoice.
+
+    Transitions Proposal to ACCEPTED, creates a MOBILIZATION milestone invoice,
+    and creates a ProjectActivation in PENDING_MOBILIZATION.
+    """
+    from app.models.commercial import Proposal
+    from app.schemas.states import MilestoneTier, ProposalStatus
+    from app.services.commercial.invoice_service import create_milestone_invoice
+
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Find the most recent ISSUED proposal for this business
+    proposal = (
+        db.query(Proposal)
+        .filter(
+            Proposal.business_id == conv.business_id,
+            Proposal.status.in_([
+                ProposalStatus.ISSUED.value,
+                ProposalStatus.ACCEPTED.value,
+            ]),
+        )
+        .order_by(Proposal.created_at.desc())
+        .first()
+    )
+
+    if proposal is None:
+        err = "No issued proposal found for this prospect. Issue a proposal first."
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"status": "ERROR", "error": err}, status_code=400)
+        return RedirectResponse(
+            url=f"/inbox?conversation_id={conversation_id}&error={err}",
+            status_code=303,
+        )
+
+    try:
+        invoice = create_milestone_invoice(
+            db, proposal.id, milestone_tier=MilestoneTier.MOBILIZATION.value
+        )
+        msg = (
+            f"Proposal accepted! K5,500 Mobilization Invoice {invoice.invoice_number} "
+            f"generated and ready for reconciliation in /invoices."
+        )
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({
+                "status": "SUCCESS",
+                "message": msg,
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "amount": float(invoice.amount),
+            })
+        return RedirectResponse(
+            url=f"/inbox?conversation_id={conversation_id}&message={msg}",
+            status_code=303,
+        )
+    except Exception as e:
+        logger.error("Accept-and-invoice failed: %s", e)
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"status": "ERROR", "error": str(e)}, status_code=400)
+        return RedirectResponse(
+            url=f"/inbox?conversation_id={conversation_id}&error={str(e)}",
+            status_code=303,
+        )
