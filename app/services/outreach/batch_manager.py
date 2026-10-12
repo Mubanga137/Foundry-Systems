@@ -43,17 +43,45 @@ def determine_default_channel(business: Business) -> tuple[str, str]:
 
 def draft_outreach_for_qualified(
     db: Session,
-    limit: int = 20,
+    limit: Optional[int] = 20,
     gemini_client: Optional[Any] = None,
+    force: bool = False,
 ) -> List[DispatchJob]:
     """
     Query QUALIFIED prospects, compile $100M Leads messages, create DRAFTED
     DispatchJob records, and transition qualifications to STAGED_FOR_OUTREACH.
+    If force=True, re-compiles and updates rendered_content for existing DRAFTED jobs.
     """
+    if force and gemini_client is None:
+        from app.services.intelligence.gemini_client import get_gemini_client
+        gemini_client = get_gemini_client()
+
     compiler = MessageCompiler(gemini_client=gemini_client)
+    processed_jobs: List[DispatchJob] = []
+
+    if force:
+        # Re-draft existing DRAFTED jobs with live Gemini / smart compiler
+        drafted_query = db.query(DispatchJob).filter(
+            DispatchJob.status == DispatchStatus.DRAFTED.value
+        )
+        if limit is not None:
+            drafted_query = drafted_query.limit(limit)
+        existing_drafted = drafted_query.all()
+
+        for job in existing_drafted:
+            qual = (
+                db.query(ProspectQualification)
+                .filter(ProspectQualification.business_id == job.business_id)
+                .first()
+            )
+            new_copy = compiler.compile(job.business, qual)
+            job.rendered_content = new_copy
+            processed_jobs.append(job)
+
+        db.commit()
 
     # Find unsuppressed qualified prospects
-    qualifications = (
+    qual_query = (
         db.query(ProspectQualification)
         .join(Business, ProspectQualification.business_id == Business.id)
         .filter(
@@ -61,9 +89,10 @@ def draft_outreach_for_qualified(
             Business.is_suppressed.is_(False),
         )
         .order_by(ProspectQualification.created_at.asc())
-        .limit(limit)
-        .all()
     )
+    if limit is not None:
+        qual_query = qual_query.limit(limit)
+    qualifications = qual_query.all()
 
     created_jobs: List[DispatchJob] = []
     now = datetime.now(timezone.utc)
@@ -111,7 +140,7 @@ def draft_outreach_for_qualified(
         created_jobs.append(job)
 
     db.commit()
-    return created_jobs
+    return processed_jobs + [j for j in created_jobs if j not in processed_jobs] if force else created_jobs
 
 
 def approve_batch(

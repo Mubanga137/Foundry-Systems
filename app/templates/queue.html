@@ -6,6 +6,11 @@
 
 {% block top_actions %}
   <div class="flex items-center gap-3">
+    <!-- Expand All / Mass Inspector Toggle -->
+    <button type="button" id="toggle-expand-all-btn" onclick="toggleExpandAllMessages()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-750 text-slate-200 border border-slate-700/80 hover:border-slate-600 font-semibold text-xs tracking-wide transition-all shadow-sm active:scale-95">
+      <span>👁️ Expand All Messages</span>
+    </button>
+
     <!-- Form to Trigger Safe Dispatcher -->
     <form action="/queue/dispatch" method="post" class="inline">
       <button type="submit" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-750 text-slate-200 border border-slate-700/80 hover:border-slate-600 font-semibold text-xs tracking-wide transition-all shadow-sm active:scale-95">
@@ -63,15 +68,16 @@
               <th scope="col" class="py-3 px-4">Contractor & Territory</th>
               <th scope="col" class="py-3 px-4 text-center">Fit Score</th>
               <th scope="col" class="py-3 px-4">Detected Asset Footprint</th>
-              <th scope="col" class="py-3 px-4">$100M Leads Copy Preview</th>
+              <th scope="col" class="py-3 px-4 w-5/12">$100M Leads Pitch (Inspector & Editor)</th>
               <th scope="col" class="py-3 px-4 text-center">Channel</th>
               <th scope="col" class="py-3 px-4 text-center">Status</th>
+              <th scope="col" class="py-3 px-4 text-center">1-Click Launch</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/70">
             {% if not items %}
             <tr>
-              <td colspan="7" class="py-16 text-center text-slate-500 font-mono text-xs">
+              <td colspan="8" class="py-16 text-center text-slate-500 font-mono text-xs">
                 No contractors currently staged in the acquisition queue.<br>
                 <a href="/" class="text-sky-400 hover:text-sky-300 hover:underline mt-2 inline-flex items-center gap-1 font-semibold">
                   Upload contractor export dataset from dashboard &rarr;
@@ -81,22 +87,29 @@
             {% endif %}
 
             {% for item in items %}
-            <tr class="hover:bg-slate-800/40 transition-colors">
-              <td class="p-4 text-center">
+            <tr id="job-row-{{ item.job_id }}" class="hover:bg-slate-800/40 transition-colors">
+              <td class="p-4 text-center align-top">
                 <input type="checkbox" name="job_ids" value="{{ item.job_id or item.business_id }}" {% if item.status == 'DRAFTED' or item.status == 'STAGED' %}checked{% endif %} class="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer">
               </td>
 
               <!-- Company & Location -->
-              <td class="py-3.5 px-4">
+              <td class="py-3.5 px-4 align-top">
                 <div class="font-bold text-slate-100 text-sm tracking-tight">{{ item.company_name }}</div>
-                <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 font-mono">
+                <div class="text-[11px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5 font-mono">
                   <span>📍 {{ item.location or 'Zambia' }}</span>
                   {% if item.phone %}<span class="text-slate-500">•</span><span class="text-slate-300">{{ item.phone }}</span>{% endif %}
                 </div>
+                {% if item.fb_page_url %}
+                <div class="mt-1">
+                  <a href="{{ item.fb_page_url }}" target="_blank" rel="noopener noreferrer" class="text-[10px] text-sky-400 hover:text-sky-300 hover:underline font-mono inline-flex items-center gap-1">
+                    <span>↗ Page Profile</span>
+                  </a>
+                </div>
+                {% endif %}
               </td>
 
               <!-- Fit Score -->
-              <td class="py-3.5 px-4 text-center">
+              <td class="py-3.5 px-4 text-center align-top">
                 {% if item.fit_score >= 80 %}
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
                   {{ item.fit_score }}/100
@@ -113,7 +126,7 @@
               </td>
 
               <!-- Assets Tag Cloud -->
-              <td class="py-3.5 px-4 max-w-xs">
+              <td class="py-3.5 px-4 max-w-xs align-top">
                 <div class="flex flex-wrap gap-1.5">
                   {% if item.assets %}
                     {% for asset in item.assets %}
@@ -127,25 +140,51 @@
                 </div>
               </td>
 
-              <!-- Copy Preview -->
-              <td class="py-3.5 px-4 max-w-sm">
-                <div class="text-slate-300 text-xs leading-relaxed line-clamp-2" title="{{ item.message_body }}">
-                  {{ item.message_body or 'Pending message compilation...' }}
+              <!-- Copy Preview & Inline Slate Card Box -->
+              <td class="py-3.5 px-4 align-top">
+                <div class="text-xs text-slate-300 bg-slate-950/60 p-3 rounded border border-slate-800 shadow-inner space-y-2">
+                  <div id="msg-text-{{ item.job_id }}" class="pitch-content line-clamp-2 leading-relaxed transition-all">
+                    {{ item.message_body or 'Pending message compilation...' }}
+                  </div>
+                  <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <button type="button" onclick="toggleRowExpand('{{ item.job_id }}')" class="text-[10px] text-sky-400 hover:text-sky-300 font-mono flex items-center gap-1">
+                      <span>👁️ Toggle View</span>
+                    </button>
+                    {% if item.job_id %}
+                    <button type="button" onclick="openEditMessageModal('{{ item.job_id }}', '{{ item.company_name|escape }}')" class="text-[10px] text-amber-400 hover:text-amber-300 font-mono flex items-center gap-1 bg-amber-950/50 hover:bg-amber-950/80 px-2.5 py-0.5 rounded border border-amber-500/30 transition-all">
+                      <span>✏️ Edit</span>
+                    </button>
+                    {% endif %}
+                  </div>
                 </div>
               </td>
 
               <!-- Channel -->
-              <td class="py-3.5 px-4 text-center">
+              <td class="py-3.5 px-4 text-center align-top">
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold {% if item.channel == 'FB_MESSENGER' %}bg-sky-950/80 text-sky-400 border border-sky-500/30{% elif item.channel == 'EMAIL' %}bg-purple-950/80 text-purple-400 border border-purple-500/30{% else %}bg-slate-800 text-slate-300 border border-slate-700{% endif %}">
                   {{ item.channel }}
                 </span>
               </td>
 
               <!-- Status -->
-              <td class="py-3.5 px-4 text-center">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold {% if item.status == 'QUEUED' %}bg-emerald-950/80 text-emerald-400 border border-emerald-500/30{% elif item.status == 'DRAFTED' or item.status == 'STAGED' %}bg-amber-950/80 text-amber-400 border border-amber-500/30{% else %}bg-slate-800 text-slate-400 border border-slate-700{% endif %}">
+              <td class="py-3.5 px-4 text-center align-top">
+                <span id="job-status-{{ item.job_id }}" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold {% if item.status == 'QUEUED' %}bg-emerald-950/80 text-emerald-400 border border-emerald-500/30{% elif item.status == 'SENT' %}bg-emerald-900/90 text-emerald-300 border border-emerald-400/40{% elif item.status == 'DRAFTED' or item.status == 'STAGED' %}bg-amber-950/80 text-amber-400 border border-amber-500/30{% else %}bg-slate-800 text-slate-400 border border-slate-700{% endif %}">
                   {{ item.status }}
                 </span>
+              </td>
+
+              <!-- 1-Click Launch Action -->
+              <td class="py-3.5 px-4 text-center align-top whitespace-nowrap">
+                {% if item.job_id %}
+                <button type="button"
+                  id="btn-messenger-{{ item.job_id }}"
+                  onclick="launchMessenger('{{ item.job_id }}', '{{ item.messenger_url }}')"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold text-xs tracking-tight shadow-md shadow-sky-500/20 active:scale-95 transition-all">
+                  <span>🚀 Send via Messenger</span>
+                </button>
+                {% else %}
+                <span class="text-slate-500 font-mono text-[10px]">Pending draft</span>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -155,5 +194,41 @@
     </div>
   </form>
 
+</div>
+
+<!-- Inline Edit Message Modal -->
+<div id="edit-message-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+  <div class="glass-panel w-full max-w-xl rounded-2xl border border-slate-800 p-6 shadow-2xl relative">
+    <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+      <div>
+        <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+          <span>✏️ Edit $100M Leads Pitch</span>
+        </h3>
+        <p id="edit-modal-subtitle" class="text-xs text-slate-400 font-mono mt-0.5">Customizing bespoke outreach message</p>
+      </div>
+      <button type="button" onclick="closeEditMessageModal()" class="text-slate-400 hover:text-slate-200 text-lg font-bold">✕</button>
+    </div>
+
+    <form id="edit-message-form" onsubmit="saveMessageEdit(event)" class="mt-4 space-y-4">
+      <input type="hidden" id="edit-modal-job-id" name="job_id" value="">
+      <div>
+        <label class="block text-xs font-mono text-slate-300 mb-1.5">Direct Message Copy (&lt;60 words, 0 exclamation marks)</label>
+        <textarea id="edit-modal-textarea" name="new_content" rows="5" class="w-full rounded-xl bg-slate-950/90 border border-slate-700/80 p-3 text-xs text-slate-200 leading-relaxed font-sans focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500" required></textarea>
+        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-1">
+          <span id="edit-modal-wordcount">0 / 60 words</span>
+          <span class="text-slate-500">$100M Leads Framework</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 pt-2">
+        <button type="button" onclick="closeEditMessageModal()" class="px-4 py-1.5 rounded-lg text-xs font-mono text-slate-400 hover:text-slate-200 bg-slate-800/80 hover:bg-slate-800 border border-slate-700">
+          Cancel
+        </button>
+        <button type="submit" id="edit-modal-save-btn" class="px-5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider text-slate-950 bg-amber-500 hover:bg-amber-400 transition-all shadow-md shadow-amber-500/20">
+          Save Message
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

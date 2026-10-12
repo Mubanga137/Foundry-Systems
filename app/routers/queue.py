@@ -93,6 +93,12 @@ def get_queue(
         elif job.status == DispatchStatus.QUEUED.value:
             queued_count += 1
 
+        from app.services.outreach.adapters.messenger_adapter import extract_fb_username
+
+        fb_url = biz.fb_page_url if biz else None
+        username = extract_fb_username(fb_url or "") if fb_url else None
+        messenger_url = f"https://m.me/{username}" if username else (fb_url or "https://m.me/")
+
         items.append(
             {
                 "job_id": job.id,
@@ -105,6 +111,8 @@ def get_queue(
                 "message_body": job.rendered_content,
                 "channel": job.channel,
                 "status": job.status,
+                "fb_page_url": fb_url,
+                "messenger_url": messenger_url,
             }
         )
 
@@ -262,3 +270,79 @@ def run_dispatcher(
         })
 
     return RedirectResponse(url=f"/queue?message={msg}", status_code=303)
+
+
+@router.post("/jobs/{job_id}/update-message")
+async def update_job_message(
+    job_id: str,
+    new_content: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Updates DispatchJob.rendered_content.
+    Returns JSON {"success": True, "updated_content": new_content}.
+    """
+    job = db.query(DispatchJob).filter(DispatchJob.id == job_id).first()
+    if not job:
+        return JSONResponse({"success": False, "error": "Job not found"}, status_code=404)
+
+    job.rendered_content = new_content.strip()
+    db.commit()
+    return JSONResponse({"success": True, "updated_content": job.rendered_content})
+
+
+@router.post("/jobs/{job_id}/mark-sent")
+def mark_job_sent(
+    job_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Updates job from QUEUED/DRAFTED to SENT, moves conversation to AWAITING_REPLY in /inbox,
+    and records an outbound delivered message.
+    """
+    from datetime import datetime, timezone
+    from app.models.conversation import Conversation, Message
+    from app.schemas.states import ConversationState, DeliveryStatus, MessageDirection
+
+    job = db.query(DispatchJob).filter(DispatchJob.id == job_id).first()
+    if not job:
+        return JSONResponse({"success": False, "error": "Job not found"}, status_code=404)
+
+    now = datetime.now(timezone.utc)
+    job.status = DispatchStatus.SENT.value
+    job.sent_at = now
+    job.delivered_at = now
+
+    # Ensure conversation exists and is in AWAITING_REPLY
+    conv = db.query(Conversation).filter(Conversation.business_id == job.business_id).first()
+    if not conv:
+        conv = Conversation(
+            business_id=job.business_id,
+            channel=job.channel or "FB_MESSENGER",
+            state=ConversationState.AWAITING_REPLY.value,
+            last_activity_at=now,
+        )
+        db.add(conv)
+        db.flush()
+    else:
+        conv.state = ConversationState.AWAITING_REPLY.value
+        conv.last_activity_at = now
+
+    # Add outbound message
+    msg = Message(
+        conversation_id=conv.id,
+        direction=MessageDirection.OUTBOUND.value,
+        content=job.rendered_content,
+        created_at=now,
+        delivery_status=DeliveryStatus.SENT.value,
+    )
+    db.add(msg)
+    db.commit()
+
+    return JSONResponse({
+        "success": True,
+        "job_id": job.id,
+        "status": job.status,
+        "conversation_id": conv.id,
+        "conversation_state": conv.state,
+    })

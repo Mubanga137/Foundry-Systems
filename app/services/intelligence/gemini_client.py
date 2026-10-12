@@ -141,7 +141,7 @@ class GeminiAnalysisClient:
                 genai.configure(api_key=key)
 
                 candidate_models = [self._model_name]
-                for fallback in ("gemini-1.5-flash-latest", "gemini-flash-latest"):
+                for fallback in ("gemini-1.5-flash-latest", "gemini-flash-latest", "gemini-2.0-flash"):
                     if fallback not in candidate_models:
                         candidate_models.append(fallback)
 
@@ -186,6 +186,117 @@ class GeminiAnalysisClient:
         raise RuntimeError(
             f"Gemini analysis failed after {max_retries} attempts: {last_error}"
         )
+
+    def generate_text(
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None,
+        max_retries: int = 3,
+    ) -> Optional[str]:
+        """
+        Generate freeform text using Gemini with key rotation and model fallback.
+        """
+        # Testable injection point
+        if self._analyze_fn is not None:
+            res = self._analyze_fn(prompt)
+            if isinstance(res, str):
+                return res
+            if isinstance(res, dict) and "text" in res:
+                return res["text"]
+
+        return self._call_gemini_text(
+            prompt, system_instruction=system_instruction, max_retries=max_retries
+        )
+
+    def generate_content(self, prompt: str) -> Optional[str]:
+        """Generate content alias for generate_text."""
+        return self.generate_text(prompt)
+
+    def _call_gemini_text(
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None,
+        max_retries: int = 3,
+    ) -> str:
+        """Call Gemini API for text generation with key rotation and model fallback."""
+        import google.generativeai as genai
+
+        last_error = None
+
+        for attempt in range(max_retries):
+            key = self._key_manager.acquire_key()
+            try:
+                genai.configure(api_key=key)
+
+                candidate_models = [self._model_name]
+                for fallback in ("gemini-1.5-flash-latest", "gemini-flash-latest", "gemini-2.0-flash"):
+                    if fallback not in candidate_models:
+                        candidate_models.append(fallback)
+
+                response = None
+                model_err = None
+                full_prompt = (
+                    f"{system_instruction}\n\n---\n\n{prompt}"
+                    if system_instruction
+                    else prompt
+                )
+
+                for m_name in candidate_models:
+                    try:
+                        model = genai.GenerativeModel(m_name)
+                        response = model.generate_content(full_prompt)
+                        if response and hasattr(response, "text") and response.text:
+                            break
+                    except Exception as me:
+                        m_err_str = str(me)
+                        if "404" in m_err_str and ("not found" in m_err_str or "no longer available" in m_err_str):
+                            model_err = me
+                            continue
+                        raise me
+
+                if response is None and model_err:
+                    raise model_err
+
+                self._key_manager.release_key(key, success=True)
+                return response.text.strip() if response and response.text else ""
+
+            except Exception as e:
+                error_str = str(e)
+                error_code = None
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    error_code = 429
+                elif "401" in error_str or "403" in error_str:
+                    error_code = 401
+                self._key_manager.release_key(
+                    key, success=False, error_code=error_code
+                )
+                last_error = e
+                logger.warning(
+                    "Gemini text generation failed (attempt %d/%d) with key %s: %s",
+                    attempt + 1, max_retries, redact_key(key), error_str,
+                )
+
+        raise RuntimeError(
+            f"Gemini text generation failed after {max_retries} attempts: {last_error}"
+        )
+
+
+def get_gemini_client() -> Optional[GeminiAnalysisClient]:
+    """Build and return a configured Gemini client if API keys are available."""
+    try:
+        from app.config import get_settings
+        settings = get_settings()
+        if not settings.GEMINI_API_KEYS:
+            return None
+        km = GeminiKeyManager(
+            keys=settings.GEMINI_API_KEYS,
+            rpm_per_key=settings.GEMINI_RPM_PER_KEY,
+            cooldown_seconds=settings.GEMINI_COOLDOWN_SECONDS,
+        )
+        return GeminiAnalysisClient(km, model_name=settings.GEMINI_MODEL)
+    except Exception as exc:
+        logger.warning("Could not initialize GeminiAnalysisClient: %s", exc)
+        return None
 
 
 # Export alias

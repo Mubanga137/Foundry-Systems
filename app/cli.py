@@ -133,17 +133,65 @@ def cmd_outreach_draft(args):
     """Draft outreach copy for QUALIFIED prospects."""
     from app.services.outreach.batch_manager import draft_outreach_for_qualified
 
+    from app.services.intelligence.gemini_client import get_gemini_client
+
     session = _get_session()
-    limit = args.limit or 20
-    print(f"Drafting outreach for qualified prospects (limit={limit})...")
-    jobs = draft_outreach_for_qualified(session, limit=limit)
+    limit = args.limit
+    force = getattr(args, "force", False)
+    client = get_gemini_client() if force else None
+    print(f"Drafting outreach for qualified prospects (limit={limit or 'all'}, force={force})...")
+    jobs = draft_outreach_for_qualified(session, limit=limit, gemini_client=client, force=force)
 
     print(f"\n{'='*50}")
     print(f"  Outreach Draft Summary")
     print(f"{'='*50}")
-    print(f"  Drafted jobs: {len(jobs)}")
+    print(f"  Drafted/Updated jobs: {len(jobs)}")
     for j in jobs:
         print(f"  - [{j.id[:8]}] {j.channel:<12} -> {j.recipient_target}")
+    print(f"{'='*50}")
+    session.close()
+
+
+def cmd_test_cleanup(args):
+    """Remove simulated test leads (Apex Mining, Copperbelt Plant) from runtime database."""
+    from app.models.business import Business
+    from app.models.dispatch import DispatchJob
+    from app.models.conversation import Conversation, Message
+    from app.models.commercial import Proposal, Invoice, PaymentEvent, ProjectActivation
+    from app.models.audit import CommercialAudit
+    from app.models.prospect import ProspectQualification
+
+    session = _get_session()
+    mock_names = ["Apex Mining Infrastructure Plc", "Copperbelt Plant & Haulage"]
+    cleaned_count = 0
+    for name in mock_names:
+        bizs = session.query(Business).filter(Business.company_name.ilike(f"%{name}%")).all()
+        for b in bizs:
+            # Delete commercial proposals/invoices/payments
+            prop_ids = [p[0] for p in session.query(Proposal.id).filter(Proposal.business_id == b.id).all()]
+            if prop_ids:
+                inv_ids = [i[0] for i in session.query(Invoice.id).filter(Invoice.proposal_id.in_(prop_ids)).all()]
+                if inv_ids:
+                    session.query(PaymentEvent).filter(PaymentEvent.invoice_id.in_(inv_ids)).delete(synchronize_session=False)
+                    session.query(Invoice).filter(Invoice.id.in_(inv_ids)).delete(synchronize_session=False)
+                session.query(ProjectActivation).filter(ProjectActivation.proposal_id.in_(prop_ids)).delete(synchronize_session=False)
+                session.query(Proposal).filter(Proposal.id.in_(prop_ids)).delete(synchronize_session=False)
+
+            conv_ids = [c[0] for c in session.query(Conversation.id).filter(Conversation.business_id == b.id).all()]
+            if conv_ids:
+                session.query(Message).filter(Message.conversation_id.in_(conv_ids)).delete(synchronize_session=False)
+            session.query(Conversation).filter(Conversation.business_id == b.id).delete(synchronize_session=False)
+            session.query(DispatchJob).filter(DispatchJob.business_id == b.id).delete(synchronize_session=False)
+            session.query(CommercialAudit).filter(CommercialAudit.business_id == b.id).delete(synchronize_session=False)
+            session.query(ProspectQualification).filter(ProspectQualification.business_id == b.id).delete(synchronize_session=False)
+            session.delete(b)
+            cleaned_count += 1
+
+    session.commit()
+    print(f"\n{'='*50}")
+    print(f"  Test Artifact Cleanup Completed")
+    print(f"{'='*50}")
+    print(f"  Removed {cleaned_count} mock business records and associated records.")
     print(f"{'='*50}")
     session.close()
 
@@ -471,8 +519,13 @@ def main():
 
     # outreach draft
     p_draft = outreach_subparsers.add_parser("draft", help="Draft outreach for qualified prospects")
-    p_draft.add_argument("--limit", "-l", type=int, default=20, help="Max prospects to draft")
+    p_draft.add_argument("--limit", "-l", type=int, default=None, help="Max prospects to draft")
+    p_draft.add_argument("--force", action="store_true", help="Force re-generation of copy for drafted jobs")
     p_draft.set_defaults(func=cmd_outreach_draft)
+
+    # test-cleanup
+    p_cleanup = subparsers.add_parser("test-cleanup", help="Remove mock test leads from runtime database")
+    p_cleanup.set_defaults(func=cmd_test_cleanup)
 
     # outreach approve
     p_approve = outreach_subparsers.add_parser("approve", help="Approve drafted jobs into queue")

@@ -789,3 +789,67 @@ class TestP0InboundReplySimulation:
         data = response.json()
         assert data["status"] == "SUCCESS"
         assert "intent" in data["data"]
+
+
+class TestQueueUpdateAndMarkSent:
+    """Verify inline message editing and 1-click assisted launcher endpoints."""
+
+    def test_post_queue_update_message(self, client: TestClient, web_session: Session):
+        biz = _create_test_business(web_session, name="Editable Contractor Ltd")
+        job = DispatchJob(
+            business_id=biz.id,
+            channel="FB_MESSENGER",
+            status=DispatchStatus.DRAFTED.value,
+            recipient_target="https://facebook.com/editable",
+            rendered_content="Old copy before operator review.",
+            idempotency_key=f"{biz.id}_fb_old",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        web_session.add(job)
+        web_session.commit()
+
+        new_text = "Updated bespoke pitch customized by operator."
+        response = client.post(
+            f"/queue/jobs/{job.id}/update-message",
+            data={"new_content": new_text},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["updated_content"] == new_text
+
+        web_session.refresh(job)
+        assert job.rendered_content == new_text
+
+    def test_post_queue_mark_sent(self, client: TestClient, web_session: Session):
+        biz = _create_test_business(web_session, name="Messenger Launch Contractor")
+        job = DispatchJob(
+            business_id=biz.id,
+            channel="FB_MESSENGER",
+            status=DispatchStatus.QUEUED.value,
+            recipient_target="https://facebook.com/launchable",
+            rendered_content="Direct pitch for Facebook messenger.",
+            idempotency_key=f"{biz.id}_fb_launch",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        web_session.add(job)
+        web_session.commit()
+
+        response = client.post(f"/queue/jobs/{job.id}/mark-sent")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["status"] == DispatchStatus.SENT.value
+        assert data["conversation_state"] == ConversationState.AWAITING_REPLY.value
+
+        web_session.refresh(job)
+        assert job.status == DispatchStatus.SENT.value
+        assert job.sent_at is not None
+
+        # Verify conversation and message created
+        conv = web_session.query(Conversation).filter(Conversation.business_id == biz.id).first()
+        assert conv is not None
+        assert conv.state == ConversationState.AWAITING_REPLY.value
+        assert len(conv.messages) == 1
+        assert conv.messages[0].content == job.rendered_content
+
