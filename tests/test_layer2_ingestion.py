@@ -427,3 +427,164 @@ class TestSampleDatasetImport:
         quals = session.query(ProspectQualification).all()
         assert len(quals) == 5
         assert all(q.qualification_state == QualificationState.DISCOVERED.value for q in quals)
+
+
+# =========================================================================== #
+#  Adaptive Facebook Scraper Ingestion Tests
+# =========================================================================== #
+
+class TestAdaptiveFacebookScraperIngestion:
+    """Tests for Instant Data Scraper exports containing minified Facebook headers."""
+
+    def test_facebook_instant_data_scraper_ingestion(self, session, tmp_path):
+        """
+        Ingest a sample CSV matching exact minified Facebook headers (x1lliihq, x1i10hfl, html-span, etc.).
+        Verify extraction of:
+          - Real businesses:
+              'Notions Electrical Contractors Zambia'
+              'Hypersonic Contractors Limited'
+              'ICU Construction'
+              'Tribliza Construction Company'
+              'PG GLASS Zambia'
+          - Phone numbers from post text (0974176967 -> +260974176967)
+          - Clean Facebook Page URLs without tracking noise
+        """
+        headers = [
+            "x1lliihq",
+            "x1i10hfl href",
+            "x1i10hfl",
+            "x1i10hfl href 2",
+            "html-span",
+            "html-span 2",
+            "xdj266r",
+            "xdj266r 2",
+            "html-span 3",
+            "html-span 4",
+        ]
+
+        rows = [
+            # 1. Notions Electrical Contractors Zambia
+            [
+                "Pages",
+                "https://web.facebook.com/NotionsElectricalContractors?__tn__=%3C",
+                "Notions Electrical Contractors Zambia",
+                "https://web.facebook.com/NotionsElectricalContractors",
+                "Closed now",
+                "Closed now",
+                "",
+                "",
+                "Electrical contracting and solar installations in Lusaka",
+                "Call us today for commercial and industrial electrical work.",
+            ],
+            # 2. Contractor with embedded phone in post text
+            [
+                "by0IW.com",
+                "https://web.facebook.com/joh0974?__cft__[0]=AZgfm5KK44&__tn__=%3C%3C%2CP-R",
+                "See more",
+                "https://web.facebook.com/joh0974?__cft__[0]=AZgfm5KK44",
+                "dm contractors zambia",
+                "·",
+                "Dm contractor Zambia",
+                "Only k900,0000 4 bedroom house…",
+                "Foundry",
+                "Dm contractor Zambia\nOnly k900,000 4 bedroom house\nLabour and material finish 0974176967",
+            ],
+            # 3. Hypersonic Contractors Limited
+            [
+                "5Qb45Z.com",
+                "https://web.facebook.com/profile.php?id=100063567901947&__cft__[0]=AZhEuJwD&__tn__=%3C%3C%2CP-R",
+                "See more",
+                "https://web.facebook.com/profile.php?id=100063567901947",
+                "Hypersonic Contractors Limited",
+                "·",
+                "Building strong. Building right. Building to last.",
+                "",
+                "Photos from Hypersonic Contractors Limited's post",
+                "Civil works, building construction, and earth moving.",
+            ],
+            # 4. ICU Construction
+            [
+                "A7JZFukN0.com",
+                "https://web.facebook.com/profile.php?id=61592088656227&__cft__[0]=AZguHHxH&__tn__=%3C%3C%2CP-R",
+                "See more",
+                "https://web.facebook.com/profile.php?id=61592088656227",
+                "ICU Construction",
+                "·",
+                "WHAT ARE YOU BUILDING THIS WEEK?",
+                "",
+                "Photos from ICU Construction 's post",
+                "High quality residential and commercial construction services.",
+            ],
+            # 5. Tribliza Construction Company
+            [
+                "ZxQcdpCcw.com",
+                "https://web.facebook.com/profile.php?id=61556753156193&__cft__[0]=AZh3pa74&__tn__=%3C%3C%2CP-R",
+                "See more",
+                "https://web.facebook.com/profile.php?id=61556753156193",
+                "Tribliza Construction Company",
+                "·",
+                "Building Houses, Smart Work Done",
+                "",
+                "Photos from Tribliza Construction Company's post",
+                "General construction, architectural planning, and bricklaying.",
+            ],
+            # 6. PG GLASS Zambia
+            [
+                "K3yy5I0gs.com",
+                "https://web.facebook.com/profile.php?id=100064061885891&__cft__[0]=AZiwBPi3&__tn__=%3C%3C%2CP-R",
+                "See more",
+                "https://web.facebook.com/profile.php?id=100064061885891",
+                "PG GLASS Zambia",
+                "·",
+                "This truck is carrying something that can transform an entire building...",
+                "",
+                "Photos from PG GLASS Zambia's post",
+                "Architectural glass, aluminum frames, and building glazing.",
+            ],
+        ]
+
+        csv_file = tmp_path / "facebook_scraper_test.csv"
+        _write_csv(csv_file, headers, rows)
+
+        summary = import_file(session, csv_file)
+
+        assert summary.rows_read == 6
+        assert summary.new_businesses >= 5
+        assert summary.errors == []
+
+        # Verify extracted businesses exist
+        biz_notions = session.query(Business).filter(Business.company_name.like("%Notions Electrical%")).first()
+        assert biz_notions is not None
+        assert biz_notions.fb_page_url == "https://web.facebook.com/NotionsElectricalContractors"
+
+        biz_hypersonic = session.query(Business).filter(Business.company_name.like("%Hypersonic Contractors%")).first()
+        assert biz_hypersonic is not None
+        assert biz_hypersonic.fb_page_url == "https://web.facebook.com/profile.php?id=100063567901947"
+
+        biz_icu = session.query(Business).filter(Business.company_name.like("%ICU Construction%")).first()
+        assert biz_icu is not None
+        assert biz_icu.fb_page_url == "https://web.facebook.com/profile.php?id=61592088656227"
+
+        biz_tribliza = session.query(Business).filter(Business.company_name.like("%Tribliza Construction%")).first()
+        assert biz_tribliza is not None
+        assert biz_tribliza.fb_page_url == "https://web.facebook.com/profile.php?id=61556753156193"
+
+        biz_pg = session.query(Business).filter(Business.company_name.like("%PG GLASS%")).first()
+        assert biz_pg is not None
+        assert biz_pg.fb_page_url == "https://web.facebook.com/profile.php?id=100064061885891"
+
+        # Verify deep phone extraction from post text
+        biz_phone = session.query(Business).filter(Business.phone_normalized == "+260974176967").first()
+        assert biz_phone is not None
+        assert "contractor" in biz_phone.company_name.lower()
+
+    def test_actual_web_3_csv_import(self, session):
+        """Verify that actual web (3).csv imports cleanly."""
+        csv_path = Path(__file__).parent.parent / "data" / "input" / "web (3).csv"
+        if not csv_path.exists():
+            pytest.skip("web (3).csv not found")
+
+        summary = import_file(session, csv_path)
+        assert summary.rows_read > 0
+        assert summary.new_businesses > 0
+        assert summary.errors == []
