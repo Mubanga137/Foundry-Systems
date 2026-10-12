@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Conversations Inbox — Foundry Systems{% endblock %}
+{% block page_title %}Conversations Command Desk{% endblock %}
+{% block page_subtitle %}Intent-classified inbound contractor responses, capability audits, and Grand Slam proposals{% endblock %}
+
+{% block content %}
+<div class="h-[calc(100vh-13rem)] flex gap-6">
+
+  <!-- Left Column: Thread List -->
+  <div class="w-88 glass-panel rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-2xl">
+    <div class="p-3.5 border-b border-slate-800/80 bg-slate-950/70 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+        <span class="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">Live Threads</span>
+      </div>
+      <span class="text-xs font-mono text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+        {{ conversations|length }} Active
+      </span>
+    </div>
+
+    <div class="flex-1 overflow-y-auto divide-y divide-slate-800/50">
+      {% if not conversations %}
+      <div class="p-8 text-center text-slate-500 font-mono text-xs">
+        <svg class="w-8 h-8 text-slate-700 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        No conversation threads recorded yet.
+      </div>
+      {% endif %}
+
+      {% for conv in conversations %}
+      <a href="/inbox?conversation_id={{ conv.id }}" class="block p-4 hover:bg-slate-800/40 transition-all {% if selected_conv and selected_conv.id == conv.id %}bg-slate-800/80 border-l-2 border-sky-400 shadow-inner{% endif %}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="font-bold text-slate-100 text-xs truncate">{{ conv.company_name }}</div>
+          <span class="text-[10px] font-mono text-slate-500 shrink-0">{{ conv.time_ago }}</span>
+        </div>
+
+        <div class="text-[11px] text-slate-400 truncate mt-1">
+          {{ conv.latest_snippet or 'Awaiting initial outreach response...' }}
+        </div>
+
+        <div class="mt-2.5 flex items-center justify-between">
+          <!-- Intent Pill -->
+          {% if conv.latest_intent == 'POSITIVE_INTEREST' %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 shadow-sm">
+            ● POSITIVE
+          </span>
+          {% elif conv.latest_intent == 'REQUEST_PRICING' %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950/80 text-amber-400 border border-amber-500/40 shadow-sm">
+            ● PRICING
+          </span>
+          {% elif conv.latest_intent == 'HAS_EXISTING_WEBSITE' %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-950/80 text-sky-400 border border-sky-500/40 shadow-sm">
+            ● HAS SITE
+          </span>
+          {% elif conv.latest_intent == 'OPT_OUT' %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/80 text-rose-400 border border-rose-500/40 shadow-sm">
+            ✕ OPT OUT
+          </span>
+          {% else %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-800 text-slate-400 border border-slate-700">
+            {{ conv.state }}
+          </span>
+          {% endif %}
+
+          <span class="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">{{ conv.channel }}</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Right Column: Active Thread Detail -->
+  <div class="flex-1 glass-panel rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+    {% if selected_conv %}
+
+      <!-- Conversation Header -->
+      <div class="p-4 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between shrink-0">
+        <div>
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-bold text-slate-100 tracking-wide">{{ selected_conv.company_name }}</h2>
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-sky-500/10 text-sky-400 border border-sky-500/30 font-bold">
+              STATE: {{ selected_conv.state }}
+            </span>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-1 font-mono flex items-center gap-3">
+            <span class="flex items-center gap-1 text-slate-300">
+              <span class="text-amber-400">📍</span> {{ selected_conv.location or 'Zambia' }}
+            </span>
+            {% if selected_conv.phone %}
+            <span class="flex items-center gap-1 text-slate-300">
+              <span class="text-emerald-400">📞</span> {{ selected_conv.phone }}
+            </span>
+            {% endif %}
+            {% if selected_conv.channel %}
+            <span class="flex items-center gap-1 text-slate-300">
+              <span class="text-sky-400">💬</span> {{ selected_conv.channel }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Quick State Triggers -->
+        <div class="flex items-center gap-2.5">
+          {% if selected_conv.state == 'AUDIT_PENDING_APPROVAL' or pending_audit %}
+          <form action="/inbox/{{ selected_conv.id }}/audit/approve" method="post" class="inline">
+            <button type="submit" class="btn-foundry-emerald px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span>Approve & Dispatch Audit</span>
+            </button>
+          </form>
+          {% endif %}
+
+          {% if selected_conv.state != 'WON' and selected_conv.state != 'OPTED_OUT' %}
+          <form action="/inbox/{{ selected_conv.id }}/proposal/issue" method="post" class="inline">
+            <button type="submit" class="btn-foundry-amber px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span>Issue K14,500 Proposal</span>
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Messages Transcript -->
+      <div class="flex-1 p-6 overflow-y-auto space-y-4">
+        {% if not messages %}
+        <div class="h-full flex items-center justify-center text-slate-500 font-mono text-xs">
+          No message exchanges recorded for this conversation thread.
+        </div>
+        {% endif %}
+
+        {% for msg in messages %}
+          {% if msg.direction == 'INBOUND' %}
+          <!-- Inbound Message Bubble -->
+          <div class="flex justify-start">
+            <div class="max-w-xl bubble-inbound text-slate-100 rounded-2xl rounded-tl-sm p-4 space-y-1.5">
+              <div class="flex items-center justify-between gap-4 text-[10px] font-mono text-slate-400">
+                <span class="font-bold text-sky-400 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                  CONTRACTOR (INBOUND)
+                </span>
+                <span>{{ msg.time_formatted }}</span>
+              </div>
+              <div class="text-xs leading-relaxed whitespace-pre-wrap font-sans text-slate-200">{{ msg.content }}</div>
+            </div>
+          </div>
+          {% else %}
+          <!-- Outbound Message Bubble -->
+          <div class="flex justify-end">
+            <div class="max-w-xl bubble-outbound text-slate-100 rounded-2xl rounded-tr-sm p-4 space-y-1.5">
+              <div class="flex items-center justify-between gap-4 text-[10px] font-mono text-amber-400/90">
+                <span class="font-bold text-amber-400 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  FOUNDRY SYSTEMS (OUTBOUND)
+                </span>
+                <span>{{ msg.time_formatted }}</span>
+              </div>
+              <div class="text-xs leading-relaxed whitespace-pre-wrap font-sans text-slate-200">{{ msg.content }}</div>
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <!-- Manual Operator Reply Form -->
+      <div class="p-4 border-t border-slate-800/80 bg-slate-950/70 shrink-0">
+        <form action="/inbox/{{ selected_conv.id }}/reply" method="post" class="flex gap-3">
+          <input type="text" name="content" placeholder="Type custom operator message or rebuttal..." required class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all font-sans">
+          <button type="submit" class="btn-foundry-primary px-5 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase flex items-center gap-2">
+            <span>Send Reply</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </form>
+      </div>
+
+    {% else %}
+      <div class="h-full flex flex-col items-center justify-center text-slate-500 p-8 text-center">
+        <div class="w-16 h-16 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 mb-3 shadow-inner">
+          <svg class="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </div>
+        <p class="text-sm font-semibold text-slate-300">Select a conversation thread to inspect messages</p>
+        <p class="text-xs text-slate-500 mt-1 max-w-sm">Review inbound contractor replies, approve capability audits, or issue Grand Slam proposals</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

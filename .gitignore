@@ -1,0 +1,58 @@
+# ============================================================
+# Foundry Systems Client Acquisition Engine (FS-CAE)
+# Production-Grade .gitignore
+# ============================================================
+
+# ---- Byte-compiled / optimized / DLL files ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ---- Virtual Environments (CRITICAL — NEVER COMMIT) ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Secrets & Environment Variables (STRICT CRITICAL) ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ---- Local Databases & WAL Journals (CRITICAL) ----
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# ---- Alembic compiled migrations ----
+alembic/versions/*.pyc
+
+# ---- Local Data Drops (keep sample template only) ----
+data/input/*.csv
+data/input/*.xlsx
+!data/input/sample_zambian_contractors.csv
+
+# ---- Logs & Diagnostics ----
+*.log
+task-*.log
+
+# ---- Pytest / Coverage ----
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# ---- Editor & OS Artifacts ----
+.vscode/*
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store

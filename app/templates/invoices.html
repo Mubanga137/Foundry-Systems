@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Financial Reconciliation Desk — Foundry Systems{% endblock %}
+{% block page_title %}Financial Reconciliation Desk{% endblock %}
+{% block page_subtitle %}Reconcile commercial mobilization fees, verify bank references, and trigger automatic client activation{% endblock %}
+
+{% block top_actions %}
+  <button type="button" onclick="toggleModal('reconciliation-modal')" class="btn-foundry-emerald inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-bold shadow-lg">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+    <span>Reconcile Bank Payment</span>
+  </button>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Financial Telemetry Overview -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="glass-panel p-5 rounded-2xl border-t-2 border-t-slate-400">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-mono text-slate-400 uppercase font-semibold">Total Invoiced</span>
+        <span class="text-slate-400 text-sm">📋</span>
+      </div>
+      <div class="text-2xl font-black font-mono text-slate-100 mt-2">K{{ "{:,.2f}".format(total_invoiced) }}</div>
+      <div class="text-[11px] text-slate-400 mt-1">Across all milestone contracts</div>
+    </div>
+
+    <div class="glass-panel p-5 rounded-2xl border-t-2 border-t-emerald-500">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-mono text-emerald-400 uppercase font-semibold">Verified Collections</span>
+        <span class="text-emerald-400 text-sm">✓</span>
+      </div>
+      <div class="text-2xl font-black font-mono text-emerald-300 mt-2">K{{ "{:,.2f}".format(total_paid) }}</div>
+      <div class="text-[11px] text-emerald-500/80 mt-1">Reconciled via bank reference</div>
+    </div>
+
+    <div class="glass-panel p-5 rounded-2xl border-t-2 border-t-amber-500">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-mono text-amber-400 uppercase font-semibold">Pending Mobilization</span>
+        <span class="text-amber-400 text-sm">⏳</span>
+      </div>
+      <div class="text-2xl font-black font-mono text-amber-400 mt-2">{{ pending_mobilization_count }}</div>
+      <div class="text-[11px] text-amber-400/80 mt-1">Awaiting K5,500.00 confirmation</div>
+    </div>
+
+    <div class="glass-panel p-5 rounded-2xl border-t-2 border-t-sky-500">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-mono text-sky-400 uppercase font-semibold">Activated Portals</span>
+        <span class="text-sky-400 text-sm">⚡</span>
+      </div>
+      <div class="text-2xl font-black font-mono text-sky-300 mt-2">{{ activated_count }}</div>
+      <div class="text-[11px] text-slate-400 mt-1">Ready in Implementation Vault</div>
+    </div>
+  </div>
+
+  <!-- Invoices Table -->
+  <div class="glass-panel rounded-2xl overflow-hidden shadow-2xl">
+    <div class="p-4 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span class="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">Milestone Invoices Ledger</span>
+      </div>
+      <span class="text-xs font-mono text-slate-400 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
+        Contract Split: 38% (Mobilization) / 31% / 31%
+      </span>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-950/80 text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800/80">
+          <tr>
+            <th class="py-3.5 px-5">Invoice #</th>
+            <th class="py-3.5 px-5">Client Company</th>
+            <th class="py-3.5 px-5 text-center">Milestone Tier</th>
+            <th class="py-3.5 px-5 text-right">Amount (ZMW)</th>
+            <th class="py-3.5 px-5 text-center">Due Date</th>
+            <th class="py-3.5 px-5 text-center">Status</th>
+            <th class="py-3.5 px-5 text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/50">
+          {% if not invoices %}
+          <tr>
+            <td colspan="7" class="py-12 text-center text-slate-500 font-mono">
+              <svg class="w-8 h-8 text-slate-700 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              No milestone invoices issued yet.<br>
+              <a href="/inbox" class="text-amber-400 hover:text-amber-300 font-semibold mt-2 inline-block">Issue a Grand Slam proposal from the inbox &rarr;</a>
+            </td>
+          </tr>
+          {% endif %}
+
+          {% for inv in invoices %}
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-4 px-5 font-mono font-bold text-sky-400 flex items-center gap-1.5">
+              <span>#</span> {{ inv.invoice_number }}
+            </td>
+            <td class="py-4 px-5 font-semibold text-slate-100">{{ inv.client_name }}</td>
+            <td class="py-4 px-5 text-center font-mono">
+              <span class="px-2.5 py-0.5 rounded text-[10px] bg-slate-900 text-slate-300 border border-slate-700 font-semibold">
+                {{ inv.milestone_tier }}
+              </span>
+            </td>
+            <td class="py-4 px-5 text-right font-mono font-bold text-slate-100 text-sm">
+              K{{ "{:,.2f}".format(inv.amount) }}
+            </td>
+            <td class="py-4 px-5 text-center font-mono text-slate-400">{{ inv.due_date_str }}</td>
+            <td class="py-4 px-5 text-center">
+              {% if inv.status == 'PAID' %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 shadow-sm">
+                ● PAID
+              </span>
+              {% elif inv.status == 'ISSUED' %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-950/80 text-amber-400 border border-amber-500/40 shadow-sm">
+                ● ISSUED
+              </span>
+              {% else %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-400">
+                {{ inv.status }}
+              </span>
+              {% endif %}
+            </td>
+            <td class="py-4 px-5 text-center">
+              {% if inv.status == 'ISSUED' %}
+              <button type="button" onclick="openReconcileModalFor('{{ inv.id }}', '{{ inv.invoice_number }}', '{{ inv.amount }}')" class="btn-foundry-emerald px-3 py-1.5 rounded-lg text-[11px] font-bold shadow-sm">
+                Reconcile
+              </button>
+              {% else %}
+              <span class="text-[11px] text-emerald-400 font-mono font-semibold flex items-center justify-center gap-1">
+                <span>✓</span> Verified
+              </span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Payment Reconciliation Modal -->
+<div id="reconciliation-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+  <div class="glass-panel rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-700/80 bg-slate-900/95">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+      <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+        <span class="text-emerald-400 text-base">⚡</span> Reconcile Bank / Mobile Payment
+      </h3>
+      <button type="button" onclick="toggleModal('reconciliation-modal')" class="text-slate-400 hover:text-slate-200 text-xl font-mono leading-none">&times;</button>
+    </div>
+
+    <form action="/invoices/reconcile" method="post" class="space-y-4">
+      <div>
+        <label class="block text-xs font-mono text-slate-400 mb-1 font-semibold">Select Issued Invoice</label>
+        <select id="modal-invoice-id" name="invoice_id" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono">
+          {% for inv in invoices %}
+            {% if inv.status == 'ISSUED' %}
+            <option value="{{ inv.id }}" data-amount="{{ inv.amount }}">{{ inv.invoice_number }} — {{ inv.client_name }} (K{{ "{:,.2f}".format(inv.amount) }})</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-mono text-slate-400 mb-1 font-semibold">Amount Received (ZMW)</label>
+        <input type="number" step="0.01" id="modal-amount-received" name="amount_received" value="5500.00" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono">
+      </div>
+
+      <div>
+        <label class="block text-xs font-mono text-slate-400 mb-1 font-semibold">Bank / Transaction Reference</label>
+        <input type="text" name="transaction_reference" placeholder="e.g. FNB-ZM-883921 or AIRTEL-ZM-..." required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono">
+        <span class="text-[10px] text-slate-500 mt-1 block">Must be unique. Enforced by database constraint.</span>
+      </div>
+
+      <div>
+        <label class="block text-xs font-mono text-slate-400 mb-1 font-semibold">Verified By</label>
+        <input type="text" name="verified_by" value="Founder" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono">
+      </div>
+
+      <div class="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">
+        <button type="button" onclick="toggleModal('reconciliation-modal')" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors">
+          Cancel
+        </button>
+        <button type="submit" class="btn-foundry-emerald px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md">
+          Confirm & Reconcile Payment
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openReconcileModalFor(invoiceId, invoiceNumber, amount) {
+  const select = document.getElementById('modal-invoice-id');
+  if (select) {
+    select.value = invoiceId;
+  }
+  const amtInput = document.getElementById('modal-amount-received');
+  if (amtInput) {
+    amtInput.value = parseFloat(amount).toFixed(2);
+  }
+  toggleModal('reconciliation-modal');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Acquisition Queue — Foundry Systems{% endblock %}
+{% block page_title %}Outbound Acquisition Queue{% endblock %}
+{% block page_subtitle %}Review qualified contractors, inspect detected assets, and execute 1-click batch outreach{% endblock %}
+
+{% block top_actions %}
+  <div class="flex items-center gap-3">
+    <!-- Form to Trigger Safe Dispatcher -->
+    <form action="/queue/dispatch" method="post" class="inline">
+      <button type="submit" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-750 text-slate-200 border border-slate-700/80 hover:border-slate-600 font-semibold text-xs tracking-wide transition-all shadow-sm active:scale-95">
+        <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+        Run Safe Dispatcher
+      </button>
+    </form>
+
+    <button type="button" onclick="document.getElementById('batch-approve-form').submit();" class="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 active:scale-95">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+      Approve Selected Batch
+    </button>
+  </div>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Status & Counter Strip -->
+  <div class="glass-panel rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 border border-slate-800/80">
+    <div class="flex items-center gap-6">
+      <div class="text-xs font-mono text-slate-400 flex items-center gap-2">
+        <span class="text-slate-500 uppercase">Total Queue:</span>
+        <span class="text-sky-400 font-bold text-sm">{{ items|length }}</span>
+      </div>
+      <div class="text-xs font-mono text-slate-400 flex items-center gap-2">
+        <span class="text-slate-500 uppercase">Staged:</span>
+        <span class="text-amber-400 font-bold text-sm">{{ staged_count }}</span>
+      </div>
+      <div class="text-xs font-mono text-slate-400 flex items-center gap-2">
+        <span class="text-slate-500 uppercase">Queued:</span>
+        <span class="text-emerald-400 font-bold text-sm">{{ queued_count }}</span>
+      </div>
+    </div>
+
+    <div class="text-xs font-mono text-slate-400 flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full {% if dispatch_active %}bg-emerald-400 status-pip-online{% else %}bg-slate-600{% endif %}"></span>
+      <span>Dispatch Window:</span>
+      <span class="{% if dispatch_active %}text-emerald-400 font-semibold{% else %}text-slate-400{% endif %}">
+        {% if dispatch_active %}Open (08:00 - 16:30 CAT){% else %}Closed (Next: 08:00 CAT){% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- Batch Approval Form wrapping Table -->
+  <form id="batch-approve-form" action="/queue/approve" method="post">
+    <div class="glass-panel rounded-xl overflow-hidden border border-slate-800/80 shadow-xl shadow-black/40">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950/90 text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800/90 text-[11px]">
+            <tr>
+              <th scope="col" class="p-4 w-10 text-center">
+                <input type="checkbox" onchange="toggleSelectAll(this, 'job_ids')" class="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer">
+              </th>
+              <th scope="col" class="py-3 px-4">Contractor & Territory</th>
+              <th scope="col" class="py-3 px-4 text-center">Fit Score</th>
+              <th scope="col" class="py-3 px-4">Detected Asset Footprint</th>
+              <th scope="col" class="py-3 px-4">$100M Leads Copy Preview</th>
+              <th scope="col" class="py-3 px-4 text-center">Channel</th>
+              <th scope="col" class="py-3 px-4 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/70">
+            {% if not items %}
+            <tr>
+              <td colspan="7" class="py-16 text-center text-slate-500 font-mono text-xs">
+                No contractors currently staged in the acquisition queue.<br>
+                <a href="/" class="text-sky-400 hover:text-sky-300 hover:underline mt-2 inline-flex items-center gap-1 font-semibold">
+                  Upload contractor export dataset from dashboard &rarr;
+                </a>
+              </td>
+            </tr>
+            {% endif %}
+
+            {% for item in items %}
+            <tr class="hover:bg-slate-800/40 transition-colors">
+              <td class="p-4 text-center">
+                <input type="checkbox" name="job_ids" value="{{ item.job_id or item.business_id }}" {% if item.status == 'DRAFTED' or item.status == 'STAGED' %}checked{% endif %} class="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer">
+              </td>
+
+              <!-- Company & Location -->
+              <td class="py-3.5 px-4">
+                <div class="font-bold text-slate-100 text-sm tracking-tight">{{ item.company_name }}</div>
+                <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 font-mono">
+                  <span>📍 {{ item.location or 'Zambia' }}</span>
+                  {% if item.phone %}<span class="text-slate-500">•</span><span class="text-slate-300">{{ item.phone }}</span>{% endif %}
+                </div>
+              </td>
+
+              <!-- Fit Score -->
+              <td class="py-3.5 px-4 text-center">
+                {% if item.fit_score >= 80 %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
+                  {{ item.fit_score }}/100
+                </span>
+                {% elif item.fit_score >= 65 %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-950/80 text-amber-400 border border-amber-500/30">
+                  {{ item.fit_score }}/100
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                  {{ item.fit_score }}/100
+                </span>
+                {% endif %}
+              </td>
+
+              <!-- Assets Tag Cloud -->
+              <td class="py-3.5 px-4 max-w-xs">
+                <div class="flex flex-wrap gap-1.5">
+                  {% if item.assets %}
+                    {% for asset in item.assets %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800/90 text-sky-300 border border-sky-500/20">
+                      {{ asset }}
+                    </span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-[11px] text-slate-500 font-mono">Commercial plant</span>
+                  {% endif %}
+                </div>
+              </td>
+
+              <!-- Copy Preview -->
+              <td class="py-3.5 px-4 max-w-sm">
+                <div class="text-slate-300 text-xs leading-relaxed line-clamp-2" title="{{ item.message_body }}">
+                  {{ item.message_body or 'Pending message compilation...' }}
+                </div>
+              </td>
+
+              <!-- Channel -->
+              <td class="py-3.5 px-4 text-center">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold {% if item.channel == 'FB_MESSENGER' %}bg-sky-950/80 text-sky-400 border border-sky-500/30{% elif item.channel == 'EMAIL' %}bg-purple-950/80 text-purple-400 border border-purple-500/30{% else %}bg-slate-800 text-slate-300 border border-slate-700{% endif %}">
+                  {{ item.channel }}
+                </span>
+              </td>
+
+              <!-- Status -->
+              <td class="py-3.5 px-4 text-center">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold {% if item.status == 'QUEUED' %}bg-emerald-950/80 text-emerald-400 border border-emerald-500/30{% elif item.status == 'DRAFTED' or item.status == 'STAGED' %}bg-amber-950/80 text-amber-400 border border-amber-500/30{% else %}bg-slate-800 text-slate-400 border border-slate-700{% endif %}">
+                  {{ item.status }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

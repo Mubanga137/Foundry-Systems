@@ -1,0 +1,406 @@
+/* ==========================================================================
+   FOUNDRY SYSTEMS — INDUSTRIAL COMMAND TOWER DESIGN SYSTEM
+   Electric Cobalt (#0052FF / #38BDF8), Brushed Chrome & Deep Obsidian (#070B14)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --color-obsidian: #050811;
+  --color-surface-900: #0B1120;
+  --color-surface-850: #0E162B;
+  --color-surface-800: #15203B;
+  --color-border-subtle: #1E293B;
+  --color-border-bright: #334155;
+  --color-foundry-blue: #2563EB;
+  --color-foundry-cyan: #38BDF8;
+  --color-foundry-amber: #F59E0B;
+  --color-foundry-emerald: #10B981;
+}
+
+body {
+  background-color: var(--color-obsidian);
+  color: #E2E8F0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  background-image: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37, 99, 235, 0.12), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 90% 100%, rgba(245, 158, 11, 0.05), transparent 70%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* --------------------------------------------------------------------------
+   Micro Labels — Bloomberg / Linear High-Density Typography
+   -------------------------------------------------------------------------- */
+.micro-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Glassmorphic Panel Surfaces — Refined Depth
+   -------------------------------------------------------------------------- */
+.glass-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.8) 0%, rgba(9, 13, 22, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(30, 41, 59, 0.85);
+  box-shadow: 
+    0 10px 30px -10px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.glass-panel:hover {
+  border-color: rgba(56, 189, 248, 0.2);
+  box-shadow: 
+    0 12px 35px -8px rgba(37, 99, 235, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* --------------------------------------------------------------------------
+   Metric Card Hover Interactions
+   -------------------------------------------------------------------------- */
+.metric-card {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.5);
+}
+
+/* Metric counter flash animation */
+@keyframes metric-flash-anim {
+  0% { color: inherit; }
+  20% { color: #FBBF24; transform: scale(1.08); }
+  100% { color: inherit; transform: scale(1); }
+}
+
+.metric-flash {
+  animation: metric-flash-anim 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --------------------------------------------------------------------------
+   Funnel Nodes
+   -------------------------------------------------------------------------- */
+.funnel-node {
+  transition: all 0.2s ease;
+}
+
+.funnel-node:hover {
+  transform: translateY(-1px);
+}
+
+/* --------------------------------------------------------------------------
+   Dropzone — Active Drag State
+   -------------------------------------------------------------------------- */
+.dropzone-surface {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.dropzone-active {
+  border-color: #F59E0B !important;
+  background-color: rgba(245, 158, 11, 0.06) !important;
+  box-shadow: 
+    0 0 0 3px rgba(245, 158, 11, 0.12),
+    inset 0 0 40px rgba(245, 158, 11, 0.04);
+}
+
+.dropzone-active svg {
+  color: #FBBF24 !important;
+  transform: scale(1.1);
+}
+
+.dropzone-inner-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(circle at center, rgba(245, 158, 11, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.dropzone-active .dropzone-inner-glow {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Metallic Horizon Glow
+   -------------------------------------------------------------------------- */
+.horizon-glow {
+  position: relative;
+}
+.horizon-glow::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.6), transparent);
+}
+
+/* --------------------------------------------------------------------------
+   Logo Ambient Backlight
+   -------------------------------------------------------------------------- */
+.logo-container {
+  position: relative;
+  transition: transform 0.25s ease, filter 0.25s ease;
+}
+.logo-container:hover {
+  transform: translateY(-1px);
+}
+.logo-glow {
+  position: absolute;
+  inset: -4px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.35) 0%, transparent 70%);
+  filter: blur(8px);
+  opacity: 0.7;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.logo-container:hover .logo-glow {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Custom Ultra-Slim Scrollbars
+   -------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #050811;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* --------------------------------------------------------------------------
+   Table Row Interactions
+   -------------------------------------------------------------------------- */
+table tbody tr {
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+table tbody tr:hover {
+  background-color: rgba(30, 41, 59, 0.45);
+}
+
+/* --------------------------------------------------------------------------
+   Status Pills & Badges — Translucent Institutional Style
+   -------------------------------------------------------------------------- */
+.badge-qualified {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-pending, .badge-review {
+  background: rgba(245, 158, 11, 0.1);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-disqualified, .badge-blocked {
+  background: rgba(244, 63, 94, 0.1);
+  color: #FB7185;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+
+.badge-sent {
+  background: rgba(56, 189, 248, 0.1);
+  color: #7DD3FC;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.badge-paid {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6EE7B7;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+/* --------------------------------------------------------------------------
+   Pulsing Status Pip
+   -------------------------------------------------------------------------- */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
+  }
+}
+.status-pip-online {
+  animation: pulse-glow 2.5s infinite;
+}
+
+/* --------------------------------------------------------------------------
+   Toast Notifications — Enhanced
+   -------------------------------------------------------------------------- */
+.toast-enter {
+  animation: slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.toast-leave {
+  animation: slideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%) scale(0.95);
+    opacity: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Metallic & Gradient Accents
+   -------------------------------------------------------------------------- */
+.text-metallic {
+  background: linear-gradient(180deg, #FFFFFF 0%, #94A3B8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-foundry-blue {
+  background: linear-gradient(135deg, #38BDF8 0%, #2563EB 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-foundry-amber {
+  background: linear-gradient(135deg, #FDE68A 0%, #F59E0B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Button Component Styles — Tactile Micro-Transitions
+   -------------------------------------------------------------------------- */
+.btn-foundry-primary {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.35);
+  transition: all 0.2s ease;
+}
+.btn-foundry-primary:hover {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  box-shadow: 0 6px 20px 0 rgba(37, 99, 235, 0.5);
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+.btn-foundry-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-foundry-amber {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: #050811;
+  font-weight: 700;
+  box-shadow: 0 4px 14px 0 rgba(245, 158, 11, 0.35);
+  transition: all 0.2s ease;
+}
+.btn-foundry-amber:hover {
+  background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%);
+  box-shadow: 0 6px 20px 0 rgba(245, 158, 11, 0.5);
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+.btn-foundry-amber:active {
+  transform: scale(0.98);
+}
+
+.btn-foundry-emerald {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  color: #050811;
+  font-weight: 700;
+  box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.35);
+  transition: all 0.2s ease;
+}
+.btn-foundry-emerald:hover {
+  background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+  box-shadow: 0 6px 20px 0 rgba(16, 185, 129, 0.5);
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+.btn-foundry-emerald:active {
+  transform: scale(0.98);
+}
+
+/* --------------------------------------------------------------------------
+   Chat Message Bubbles
+   -------------------------------------------------------------------------- */
+.bubble-inbound {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.4);
+}
+
+.bubble-outbound {
+  background: linear-gradient(145deg, rgba(20, 26, 45, 0.95), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow: 0 4px 20px -5px rgba(245, 158, 11, 0.15);
+}
+
+/* --------------------------------------------------------------------------
+   Selection & Focus — Brand Consistency
+   -------------------------------------------------------------------------- */
+::selection {
+  background: rgba(37, 99, 235, 0.4);
+  color: #F8FAFC;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid rgba(56, 189, 248, 0.4);
+  outline-offset: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   Checkbox — Custom Styled
+   -------------------------------------------------------------------------- */
+input[type="checkbox"] {
+  accent-color: #F59E0B;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Adaptations
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .micro-label {
+    font-size: 10px;
+  }
+}

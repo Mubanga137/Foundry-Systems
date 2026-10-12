@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Foundry Systems Client Acquisition Engine — Operator Control Tower for commercial pipeline management, outreach dispatch, and financial reconciliation.">
+  <title>{% block title %}Foundry Systems — Operator Control Tower{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/static/img/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  
+  <!-- Tailwind CSS via Official CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            obsidian: '#050811',
+            slate: {
+              950: '#070B14',
+              900: '#0B1120',
+              850: '#0E162B',
+              800: '#15203B',
+              700: '#233252',
+              600: '#334466',
+            },
+            foundry: {
+              blue: '#2563EB',
+              cyan: '#38BDF8',
+              accent: '#0052FF',
+              steel: '#94A3B8',
+            },
+            amber: {
+              400: '#FBBF24',
+              500: '#F59E0B',
+              600: '#D97706',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- HTMX via Official CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/static/css/custom.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex antialiased">
+
+  <!-- Left Sidebar -->
+  <aside class="w-64 bg-slate-900/90 backdrop-blur-md border-r border-slate-800/80 flex flex-col justify-between shrink-0 select-none z-20">
+    <div>
+      <!-- Brand Header with Official Foundry Systems Logo -->
+      <a href="/" class="px-5 py-4 border-b border-slate-800/80 flex items-center gap-3.5 hover:bg-slate-850/50 transition-colors group">
+        <div class="logo-container w-10 h-11 shrink-0 rounded-lg overflow-hidden border border-sky-500/40 shadow-lg shadow-blue-900/40 bg-slate-950 flex items-center justify-center p-0.5 group-hover:border-sky-400 transition-colors">
+          <div class="logo-glow"></div>
+          <img src="/static/img/logo.png" alt="Foundry Systems" class="w-full h-full object-cover scale-110">
+        </div>
+        <div class="flex flex-col min-w-0">
+          <span class="text-xs font-mono font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-sky-200 to-blue-400 uppercase truncate">FOUNDRY</span>
+          <span class="text-[10px] font-mono tracking-[0.22em] text-sky-400 font-bold uppercase truncate">SYSTEMS</span>
+          <span class="text-[9px] font-mono text-slate-500 tracking-wider uppercase mt-0.5">CONTROL TOWER</span>
+        </div>
+      </a>
+
+      <!-- Navigation Links -->
+      <nav class="p-3 space-y-1">
+        <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all {% if active_page == 'dashboard' %}bg-sky-500/10 text-sky-300 border border-sky-500/30 shadow-sm shadow-sky-500/10{% else %}text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 hover:border-slate-700/60 border border-transparent{% endif %}">
+          <svg class="w-4 h-4 shrink-0 {% if active_page == 'dashboard' %}text-sky-400{% else %}text-slate-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Executive Dashboard
+        </a>
+
+        <a href="/queue" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all {% if active_page == 'queue' %}bg-amber-500/10 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10{% else %}text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 hover:border-slate-700/60 border border-transparent{% endif %}">
+          <svg class="w-4 h-4 shrink-0 {% if active_page == 'queue' %}text-amber-400{% else %}text-slate-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Acquisition Queue
+        </a>
+
+        <a href="/inbox" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all {% if active_page == 'inbox' %}bg-sky-500/10 text-sky-300 border border-sky-500/30 shadow-sm shadow-sky-500/10{% else %}text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 hover:border-slate-700/60 border border-transparent{% endif %}">
+          <svg class="w-4 h-4 shrink-0 {% if active_page == 'inbox' %}text-sky-400{% else %}text-slate-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Conversations Inbox
+        </a>
+
+        <a href="/invoices" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all {% if active_page == 'invoices' %}bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-sm shadow-emerald-500/10{% else %}text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 hover:border-slate-700/60 border border-transparent{% endif %}">
+          <svg class="w-4 h-4 shrink-0 {% if active_page == 'invoices' %}text-emerald-400{% else %}text-slate-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z"/></svg>
+          Financial Desk
+        </a>
+
+        <a href="/projects" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all {% if active_page == 'projects' %}bg-sky-500/10 text-sky-300 border border-sky-500/30 shadow-sm shadow-sky-500/10{% else %}text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 hover:border-slate-700/60 border border-transparent{% endif %}">
+          <svg class="w-4 h-4 shrink-0 {% if active_page == 'projects' %}text-sky-400{% else %}text-slate-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          Implementation Vault
+        </a>
+      </nav>
+    </div>
+
+    <!-- Bottom Status Panel -->
+    <div class="p-3.5 border-t border-slate-800/80 space-y-2.5">
+      <div class="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 text-[11px]">
+        <div class="flex items-center justify-between text-slate-400 font-mono">
+          <span class="text-slate-500">TERRITORY:</span>
+          <span class="text-slate-200 font-semibold tracking-wide">ZAMBIA (CAT)</span>
+        </div>
+        <div class="flex items-center justify-between mt-1 text-slate-400 font-mono">
+          <span class="text-slate-500">DISPATCH:</span>
+          <span class="{% if dispatch_active %}text-emerald-400 font-semibold{% else %}text-slate-400 font-medium{% endif %}">
+            {% if dispatch_active %}ACTIVE (08-16:30){% else %}PAUSED (AFTER-HOURS){% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="flex items-center justify-between px-1 text-[11px] text-slate-500 font-mono">
+        <span class="text-slate-400 font-medium">FS-CAE v1.0 PROD</span>
+        <span class="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 status-pip-online"></span>
+          ONLINE
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="flex-1 flex flex-col min-h-screen overflow-y-auto">
+    <!-- Top Bar -->
+    <header class="bg-slate-900/70 backdrop-blur-md border-b border-slate-800/80 px-8 py-3.5 flex items-center justify-between shrink-0 sticky top-0 z-10">
+      <div>
+        <h1 class="text-base font-bold text-slate-100 flex items-center gap-2.5 tracking-tight">
+          {% block page_title %}Executive Command Center{% endblock %}
+        </h1>
+        <p class="text-[11px] text-slate-400 font-normal">{% block page_subtitle %}Real-time pipeline metrics & commercial telemetry{% endblock %}</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        {% block top_actions %}{% endblock %}
+
+        <!-- Operator Badge -->
+        <div class="hidden md:flex items-center gap-2 pl-3 border-l border-slate-800 text-xs font-mono">
+          <div class="w-6 h-6 rounded-md bg-gradient-to-br from-slate-700 to-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-sky-400 font-bold">
+            OP
+          </div>
+          <span class="text-slate-300 text-[11px]">FOUNDER</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Flash / Error Banners -->
+    <div class="px-8 pt-4">
+      {% if message %}
+      <div class="px-4 py-2.5 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/40">
+        <span class="text-emerald-400 font-bold">✓</span> <span>{{ message }}</span>
+      </div>
+      {% endif %}
+      {% if error %}
+      <div class="px-4 py-2.5 rounded-lg bg-rose-950/70 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2 shadow-lg shadow-rose-950/40">
+        <span class="text-rose-400 font-bold">⚠</span> <span>{{ error }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Page Content -->
+    <main class="flex-1 p-8">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Cockpit Utilities JS -->
+  <script src="/static/js/cockpit.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
